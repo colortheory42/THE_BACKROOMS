@@ -516,7 +516,7 @@ class BackroomsEngine:
         # Jump
         if keys[pygame.K_SPACE] and self.on_ground and not self.is_crouching:
             self.is_jumping = True
-            self.jump_velocity = -JUMP_STRENGTH
+            self.jump_velocity = JUMP_STRENGTH
             self.on_ground = False
 
         # Movement speed
@@ -573,18 +573,20 @@ class BackroomsEngine:
         if self.is_moving:
             self.head_bob_time += dt * HEAD_BOB_SPEED
 
-        # Smooth camera height
-        if abs(self.y - self.target_y) > 0.1:
-            self.y += (self.target_y - self.y) * CROUCH_TRANSITION_SPEED * dt
-        else:
-            self.y = self.target_y
+        # Smooth camera height (ONLY when grounded, so it doesn't cancel jumps)
+        if self.on_ground and not self.is_jumping:
+            if abs(self.y - self.target_y) > 0.1:
+                self.y += (self.target_y - self.y) * CROUCH_TRANSITION_SPEED * dt
+            else:
+                self.y = self.target_y
 
         # Jump physics
         if self.is_jumping or not self.on_ground:
-            self.jump_velocity += GRAVITY * dt
+            self.jump_velocity -= GRAVITY * dt  # gravity pulls down
             self.y += self.jump_velocity * dt
 
-            if self.y >= self.target_y:
+            # Land only when falling downward
+            if self.jump_velocity < 0 and self.y <= self.target_y:
                 self.y = self.target_y
                 self.jump_velocity = 0
                 self.is_jumping = False
