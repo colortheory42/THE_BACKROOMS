@@ -54,11 +54,16 @@ def generate_footstep_sound():
     return pygame.sndarray.make_sound(stereo_audio)
 
 
-def generate_player_footstep_sound():
-    """Generate deep, soft carpet footstep (pressure into fabric)."""
+def generate_player_footstep_sound(turn_factor=1.0):
+    """Generate deep, soft carpet footstep (pressure into fabric).
+    turn_factor: 0.0 (straight) → 1.0 (hard turn)
+    """
     duration = 0.14
     samples = int(SAMPLE_RATE * duration)
     t = np.linspace(0, duration, samples, False)
+
+    # Clamp for safety
+    turn_factor = max(0.0, min(turn_factor, 1.0))
 
     # Fabric noise (very gentle)
     noise = np.random.uniform(-1, 1, samples)
@@ -71,8 +76,9 @@ def generate_player_footstep_sound():
         np.linspace(1, 0, decay)
     ])
 
-    # Strong low-pass to simulate carpet absorption
-    muffled = low_pass(noise, kernel_size=65)
+    # Directional carpet absorption (fiber shear when turning)
+    kernel_size = int(65 + turn_factor * 25)
+    muffled = low_pass(noise, kernel_size=kernel_size)
 
     # Deep pressure "crush" (felt, not heard)
     bass = (
@@ -85,16 +91,26 @@ def generate_player_footstep_sound():
     # Extremely conservative output level
     sound = sound / np.max(np.abs(sound)) * 0.32
 
-    audio = np.array(sound * 32767, dtype=np.int16)
-    stereo_audio = np.column_stack((audio, audio))
+    # Subtle stereo smear (body rotation, not panning)
+    left = sound * (1.0 - turn_factor * 0.08)
+    right = sound * (1.0 + turn_factor * 0.08)
+
+    audio_l = np.array(left * 32767, dtype=np.int16)
+    audio_r = np.array(right * 32767, dtype=np.int16)
+    stereo_audio = np.column_stack((audio_l, audio_r))
 
     return pygame.sndarray.make_sound(stereo_audio)
 
-def generate_crouch_footstep_sound():
-    """Generate ultra-soft, deep carpet crouch footstep (slow pressure)."""
+
+def generate_crouch_footstep_sound(turn_factor=1.0):
+    """Generate ultra-soft, deep carpet crouch footstep (slow pressure).
+    turn_factor: 0.0 (straight) → 1.0 (hard turn)
+    """
     duration = 0.18
     samples = int(SAMPLE_RATE * duration)
     t = np.linspace(0, duration, samples, False)
+
+    turn_factor = max(0.0, min(turn_factor, 1.0))
 
     # Very gentle fabric noise
     noise = np.random.uniform(-1, 1, samples)
@@ -107,8 +123,9 @@ def generate_crouch_footstep_sound():
         np.linspace(1, 0, decay)
     ])
 
-    # Strong absorption — carpet + body close to ground
-    muffled = low_pass(noise, kernel_size=80)
+    # Strong absorption — more smear when turning
+    kernel_size = int(80 + turn_factor * 30)
+    muffled = low_pass(noise, kernel_size=kernel_size)
 
     # Deep, slow pressure (almost sub-audible)
     bass = (
@@ -121,10 +138,16 @@ def generate_crouch_footstep_sound():
     # Very low output level
     sound = sound / np.max(np.abs(sound)) * 0.24
 
-    audio = np.array(sound * 32767, dtype=np.int16)
-    stereo_audio = np.column_stack((audio, audio))
+    # Extremely subtle stereo drift
+    left = sound * (1.0 - turn_factor * 0.06)
+    right = sound * (1.0 + turn_factor * 0.06)
+
+    audio_l = np.array(left * 32767, dtype=np.int16)
+    audio_r = np.array(right * 32767, dtype=np.int16)
+    stereo_audio = np.column_stack((audio_l, audio_r))
 
     return pygame.sndarray.make_sound(stereo_audio)
+
 
 def generate_electrical_buzz():
     """Generate electrical buzzing sound."""
