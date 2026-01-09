@@ -224,9 +224,13 @@ def main():
 
                     # Destroy wall (E key)
                     if event.key == pygame.K_e:
-                        targeted_wall = engine.find_targeted_wall()
-                        if targeted_wall:
-                            engine.destroy_wall(targeted_wall, sound_effects['destroy'])
+                        target = engine.find_targeted_wall_or_pillar()
+                        if target:
+                            target_type, target_key = target
+                            if target_type == 'wall':
+                                engine.destroy_wall(target_key, sound_effects['destroy'])
+                            elif target_type == 'pillar':
+                                engine.destroy_pillar(target_key, sound_effects['destroy'])
 
                 elif state == GameState.PAUSED:
                     # Resume
@@ -250,11 +254,16 @@ def main():
                         running = False
 
             # Mouse click destruction only in PLAYING
+            # Mouse click
             if event.type == pygame.MOUSEBUTTONDOWN and state == GameState.PLAYING:
-                if event.button == 1:  # Left click
-                    targeted_wall = engine.find_targeted_wall()
-                    if targeted_wall:
-                        engine.destroy_wall(targeted_wall, sound_effects['destroy'])
+                if event.button == 1:
+                    target = engine.find_targeted_wall_or_pillar()
+                    if target:
+                        target_type, target_key = target
+                        if target_type == 'wall':
+                            engine.destroy_wall(target_key, sound_effects['destroy'])
+                        elif target_type == 'pillar':
+                            engine.destroy_pillar(target_key, sound_effects['destroy'])
 
         # -------------------------
         # Update + Render
