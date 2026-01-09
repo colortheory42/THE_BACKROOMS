@@ -314,26 +314,7 @@ def main():
         engine.render(SCREEN)
 
         # UI - FPS
-        fps_text = font.render(f"FPS: {int(clock.get_fps())}", True, (180, 200, 230))
-        SCREEN.blit(fps_text, (10, 10))
-
-        # Player state
-        state_str = "WALKING"
-        if engine.is_running:
-            state_str = "RUNNING"
-        elif engine.is_crouching:
-            state_str = "CROUCHING"
-
-        # Debris stats
-        settled_debris = sum(1 for d in engine.debris_pieces if d.is_settled)
-        at_floor = sum(1 for d in engine.debris_pieces if abs(d.cy - get_scaled_floor_y()) < 5)
-
-        pos_text = small_font.render(
-            f"Pos: ({int(engine.x)}, {int(engine.z)}) | {state_str} | "
-            f"Debris: {len(engine.debris_pieces)} (settled:{settled_debris}, floor:{at_floor})",
-            True, (200, 220, 250)
-        )
-        SCREEN.blit(pos_text, (10, 35))
+        
 
         # Save message
         if save_message:
