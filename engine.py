@@ -50,6 +50,7 @@ class BackroomsEngine:
 
         # Destruction system
         self.destroyed_walls = set()
+        self.destroyed_pillars = set()
         self.pre_damaged_walls = {}  # wall_key -> damage_state (0.0-1.0)
         self.debris_pieces = []
         self._spawned_rubble = set()
@@ -186,15 +187,15 @@ class BackroomsEngine:
 
         return ray_origin, ray_dir
 
-    def find_targeted_wall(self):
-        """Find wall segment being looked at."""
+    def find_targeted_wall_or_pillar(self):
+        """Find wall segment or pillar being looked at."""
         ray_origin, ray_dir = self.get_ray_from_screen_center()
-        max_distance = 100  # Max reach
+        max_distance = 100
 
         closest_hit = None
         closest_dist = float('inf')
+        hit_type = None
 
-        # Check nearby wall segments
         render_range = 200
         start_x = int((self.x_s - render_range) // PILLAR_SPACING) * PILLAR_SPACING
         end_x = int((self.x_s + render_range) // PILLAR_SPACING) * PILLAR_SPACING
@@ -204,9 +205,10 @@ class BackroomsEngine:
         h = get_scaled_wall_height()
         floor_y = get_scaled_floor_y()
 
+        # Check walls (existing code)
         for px in range(start_x, end_x + PILLAR_SPACING, PILLAR_SPACING):
             for pz in range(start_z, end_z + PILLAR_SPACING, PILLAR_SPACING):
-                # Check horizontal walls
+                # Horizontal walls
                 if self._has_wall_between(px, pz, px + PILLAR_SPACING, pz):
                     wall_key = tuple(sorted([(px, pz), (px + PILLAR_SPACING, pz)]))
                     if wall_key not in self.destroyed_walls:
@@ -214,20 +216,19 @@ class BackroomsEngine:
                         z = pz
                         x1, x2 = px, px + PILLAR_SPACING
 
-                        # Front face
                         v0 = (x1, h, z - half_thick)
                         v1 = (x2, h, z - half_thick)
                         v2 = (x2, floor_y, z - half_thick)
                         v3 = (x1, floor_y, z - half_thick)
 
-                        # Check both triangles
                         for tri in [(v0, v1, v2), (v0, v2, v3)]:
                             hit = ray_intersects_triangle(ray_origin, ray_dir, *tri)
                             if hit and hit[0] < max_distance and hit[0] < closest_dist:
                                 closest_dist = hit[0]
                                 closest_hit = wall_key
+                                hit_type = 'wall'
 
-                # Check vertical walls
+                # Vertical walls
                 if self._has_wall_between(px, pz, px, pz + PILLAR_SPACING):
                     wall_key = tuple(sorted([(px, pz), (px, pz + PILLAR_SPACING)]))
                     if wall_key not in self.destroyed_walls:
@@ -235,7 +236,6 @@ class BackroomsEngine:
                         x = px
                         z1, z2 = pz, pz + PILLAR_SPACING
 
-                        # Front face
                         v0 = (x - half_thick, h, z1)
                         v1 = (x - half_thick, h, z2)
                         v2 = (x - half_thick, floor_y, z2)
@@ -246,8 +246,44 @@ class BackroomsEngine:
                             if hit and hit[0] < max_distance and hit[0] < closest_dist:
                                 closest_dist = hit[0]
                                 closest_hit = wall_key
+                                hit_type = 'wall'
 
-        return closest_hit
+        # Check pillars (NEW CODE)
+        offset = PILLAR_SPACING // 2
+        for px in range(start_x, end_x + PILLAR_SPACING, PILLAR_SPACING):
+            for pz in range(start_z, end_z + PILLAR_SPACING, PILLAR_SPACING):
+                pillar_x = px + offset
+                pillar_z = pz + offset
+
+                if self._get_pillar_at(pillar_x, pillar_z):
+                    pillar_key = (pillar_x, pillar_z)
+                    if pillar_key not in self.destroyed_pillars:
+                        s = PILLAR_SIZE
+
+                        # Check all 4 faces
+                        faces = [
+                            [(pillar_x, h, pillar_z), (pillar_x + s, h, pillar_z),
+                             (pillar_x + s, floor_y, pillar_z), (pillar_x, floor_y, pillar_z)],
+                            [(pillar_x + s, h, pillar_z + s), (pillar_x, h, pillar_z + s),
+                             (pillar_x, floor_y, pillar_z + s), (pillar_x + s, floor_y, pillar_z + s)],
+                            [(pillar_x, h, pillar_z), (pillar_x, h, pillar_z + s),
+                             (pillar_x, floor_y, pillar_z + s), (pillar_x, floor_y, pillar_z)],
+                            [(pillar_x + s, h, pillar_z + s), (pillar_x + s, h, pillar_z),
+                             (pillar_x + s, floor_y, pillar_z), (pillar_x + s, floor_y, pillar_z + s)]
+                        ]
+
+                        for face in faces:
+                            v0, v1, v2, v3 = face
+                            for tri in [(v0, v1, v2), (v0, v2, v3)]:
+                                hit = ray_intersects_triangle(ray_origin, ray_dir, *tri)
+                                if hit and hit[0] < max_distance and hit[0] < closest_dist:
+                                    closest_dist = hit[0]
+                                    closest_hit = pillar_key
+                                    hit_type = 'pillar'
+
+        if closest_hit:
+            return (hit_type, closest_hit)
+        return None
 
 
     # === WALL DESTRUCTION ===
@@ -311,6 +347,55 @@ class BackroomsEngine:
                 velocity=(vx, vy, vz)
             ))
 
+    def destroy_pillar(self, pillar_key, destroy_sound):
+        """Destroy a pillar and create debris."""
+        if pillar_key in self.destroyed_pillars:
+            return
+
+        self.destroyed_pillars.add(pillar_key)
+        destroy_sound.play()
+
+        pillar_x, pillar_z = pillar_key
+        s = PILLAR_SIZE
+        h = get_scaled_wall_height()
+        floor_y = get_scaled_floor_y()
+
+        min_x, max_x = pillar_x, pillar_x + s
+        min_z, max_z = pillar_z, pillar_z + s
+        min_y, max_y = floor_y, h
+
+        base = 1200
+        num_particles = max(250, int(base * (1.0 / (1.0 + len(self.destroyed_pillars) / 20))))
+
+        for i in range(num_particles):
+            px = random.uniform(min_x, max_x)
+            py = random.uniform(min_y, max_y)
+            pz = random.uniform(min_z, max_z)
+
+            center_x = (min_x + max_x) / 2
+            center_z = (min_z + max_z) / 2
+
+            dx = px - center_x
+            dz = pz - center_z
+            dist = math.sqrt(dx ** 2 + dz ** 2) + 0.1
+
+            speed = random.uniform(8, 20)
+            vx = (dx / dist) * speed + random.uniform(-3, 3)
+            vy = random.uniform(-20, -5)
+            vz = (dz / dist) * speed + random.uniform(-3, 3)
+
+            color_var = random.randint(-30, 30)
+            particle_color = (
+                max(0, min(255, PILLAR_COLOR[0] + color_var)),
+                max(0, min(255, PILLAR_COLOR[1] + color_var)),
+                max(0, min(255, PILLAR_COLOR[2] + color_var))
+            )
+
+            self.debris_pieces.append(Debris(
+                (px, py, pz),
+                particle_color,
+                velocity=(vx, vy, vz)
+            ))
     # === SOUND SYSTEM ===
 
     def update_sounds(self, dt, sound_effects):
@@ -917,13 +1002,44 @@ class BackroomsEngine:
 
     # === WORLD GENERATION ===
 
+    """
+    Replace your existing _get_pillar_at() method in engine.py with this:
+    """
+
     def _get_pillar_at(self, px, pz):
-        """Check if there's a pillar at this position."""
+        """Check if there's a pillar at this position based on PILLAR_MODE."""
         key = (px, pz)
         if key in self.pillar_cache:
             return self.pillar_cache[key]
 
-        has_pillar = False  # No pillars in this version
+        if PILLAR_MODE == "none":
+            self.pillar_cache[key] = False
+            return False
+
+        offset = PILLAR_SPACING // 2
+        is_on_pillar_grid = (px % PILLAR_SPACING == offset) and (pz % PILLAR_SPACING == offset)
+
+        if not is_on_pillar_grid:
+            self.pillar_cache[key] = False
+            return False
+
+        if PILLAR_MODE == "all":
+            self.pillar_cache[key] = True
+            return True
+
+        import random as rnd
+        seed = hash((px, pz, self.world_seed)) % 100000
+        rnd.seed(seed)
+
+        probability_map = {
+            "sparse": 0.10,
+            "normal": 0.30,
+            "dense": 0.60,
+        }
+
+        probability = probability_map.get(PILLAR_MODE, 0.0)
+        has_pillar = rnd.random() < probability
+
         self.pillar_cache[key] = has_pillar
         return has_pillar
 
@@ -1066,6 +1182,8 @@ class BackroomsEngine:
         render_items = []
         render_range = RENDER_DISTANCE
 
+        offset = PILLAR_SPACING // 2
+
         start_x = int((self.x_s - render_range) // PILLAR_SPACING) * PILLAR_SPACING
         end_x = int((self.x_s + render_range) // PILLAR_SPACING) * PILLAR_SPACING
         start_z = int((self.z_s - render_range) // PILLAR_SPACING) * PILLAR_SPACING
@@ -1073,11 +1191,19 @@ class BackroomsEngine:
 
         for px in range(start_x, end_x + PILLAR_SPACING, PILLAR_SPACING):
             for pz in range(start_z, end_z + PILLAR_SPACING, PILLAR_SPACING):
-                if self._get_pillar_at(px, pz):
-                    dist = math.sqrt((px - self.x_s) ** 2 + (pz - self.z_s) ** 2)
+                pillar_x = px + offset
+                pillar_z = pz + offset
+
+                pillar_key = (pillar_x, pillar_z)
+
+                if pillar_key in self.destroyed_pillars:
+                    continue
+
+                if self._get_pillar_at(pillar_x, pillar_z):
+                    dist = math.sqrt((pillar_x - self.x_s) ** 2 + (pillar_z - self.z_s) ** 2)
                     if dist < RENDER_DISTANCE:
-                        def make_draw_func(px=px, pz=pz):
-                            return lambda surface: self._draw_single_pillar(surface, px, pz)
+                        def make_draw_func(pillar_x=pillar_x, pillar_z=pillar_z):
+                            return lambda surface: self._draw_single_pillar(surface, pillar_x, pillar_z)
 
                         render_items.append((dist, make_draw_func()))
 
@@ -1362,3 +1488,4 @@ class BackroomsEngine:
 
             print(f"Loaded world with seed: {self.world_seed}")
             print(f"Loaded {len(self.destroyed_walls)} destroyed walls")
+
