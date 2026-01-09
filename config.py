@@ -4,8 +4,8 @@ All tunable parameters in one place.
 """
 
 # Display settings
-WIDTH = 4480
-HEIGHT = 2520
+WIDTH = 960
+HEIGHT = 540
 FULLSCREEN = True
 FPS = 60
 
@@ -25,7 +25,7 @@ ROTATION_SMOOTHING = 0.3
 ROTATION_SPEED = 2.0
 
 # Movement speeds
-WALK_SPEED = 25
+WALK_SPEED = 50
 RUN_SPEED = 100
 CROUCH_SPEED = 10
 
@@ -46,12 +46,21 @@ RENDER_DISTANCE = 2000
 # Room generation
 PILLAR_SPACING = 400
 HALLWAY_WIDTH = 100
-PILLAR_SIZE = 8
+PILLAR_SIZE = 80
 WALL_THICKNESS = 20
 WALL_HEIGHT = 400
 CAMERA_HEIGHT = 50
 CEILING_HEIGHT_MULTIPLIER = 1
-ZONE_SIZE = 400
+ZONE_SIZE = 40000
+
+# === PILLAR GENERATION CONTROL ===
+# Control internal pillar density:
+# "none" = no pillars (default)
+# "sparse" = few pillars (10% chance per grid point)
+# "normal" = some pillars (30% chance per grid point)
+# "dense" = many pillars (60% chance per grid point)
+# "all" = pillar at every grid point (warning: very dense!)
+PILLAR_MODE = "normal"  # <-- CHANGE THIS LINE
 
 # Camera effects
 HEAD_BOB_SPEED = 3.0
